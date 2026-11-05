@@ -72,7 +72,41 @@ def load_and_explore_gis_data(file_path):
     
     # TODO: Return the loaded DataFrame
     
-    pass  # Remove this line when you implement the function
+    print("=" * 50)
+    print("LOADING AND EXPLORING GIS DATA")
+    print("=" * 50)
+
+    print(f"Loading data from: {file_path}")
+
+    try:
+        df = pd.read_csv(file_path)
+    except FileNotFoundError:
+        print(f"ERROR: File not found: {file_path}")
+        return None
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return None
+
+    print(f"Dataset shape: {df.shape}")
+    print(f"Columns: {list(df.columns)}")
+
+    print("\nFirst 5 rows:")
+    print(df.head())
+
+    print("\nData types:")
+    print(df.dtypes)
+
+    print("\nSummary statistics:")
+    print(df.describe())
+
+    print("\nMissing values:")
+    print(df.isnull().sum())
+
+    print("\nDuplicate rows:", df.duplicated().sum())
+
+    print("\nData exploration complete!")
+
+    return df
 
 
 # =============================================================================
@@ -124,7 +158,45 @@ def filter_environmental_data(df, min_temp=15, max_temp=30, quality="good"):
     
     # TODO: Return the filtered DataFrame
     
-    pass  # Remove this line when you implement the function
+    print("=" * 50)
+    print("FILTERING ENVIRONMENTAL DATA")
+    print("=" * 50)
+
+    if df is None or df.empty:
+        print("ERROR: Empty or None DataFrame provided")
+        return pd.DataFrame()
+
+    required_columns = ['temperature_c', 'data_quality']
+    for col in required_columns:
+        if col not in df.columns:
+            print(f"ERROR: Missing required column: {col}")
+            return pd.DataFrame()
+
+    original_count = len(df)
+
+    mask = (
+        (df['temperature_c'] >= min_temp) &
+        (df['temperature_c'] <= max_temp)
+    )
+
+    filtered_df = df[mask]
+    filtered_df = filtered_df[
+        filtered_df['data_quality'] == quality
+    ].copy()
+
+    filtered_count = len(filtered_df)
+    removed_count = original_count - filtered_count
+    retained_percent = (filtered_count / original_count) * 100
+
+    print(f"Original rows: {original_count}")
+    print(f"Filtered rows: {filtered_count}")
+    print(f"Removed rows: {removed_count}")
+    print(f"Retained: {retained_percent:.1f}%")
+    print(f"Temperature range: {min_temp} to {max_temp} °C")
+    print(f"Data quality: {quality}")
+    print("Filtering complete!")
+
+    return filtered_df
 
 
 # =============================================================================
@@ -174,6 +246,7 @@ def calculate_station_statistics(df):
     
     # TODO: Reset the index to make station_id a regular column
     # TODO: Use .reset_index()
+  
     
     # TODO: Rename columns to be clear
     # TODO: Use .rename(columns={'temperature_c': 'avg_temperature', ...})
@@ -185,7 +258,39 @@ def calculate_station_statistics(df):
     
     # TODO: Return the statistics DataFrame
     
-    pass  # Remove this line when you implement the function
+
+    print("=" * 50)
+    print("CALCULATING STATION STATISTICS")
+    print("=" * 50)
+
+    if df is None or df.empty:
+        print("ERROR: DataFrame is empty or None")
+        return pd.DataFrame()
+
+    required_columns = ['station_id', 'temperature_c', 'humidity_percent']
+    for col in required_columns:
+        if col not in df.columns:
+            print(f"ERROR: Missing required column: {col}")
+            return pd.DataFrame()
+
+    station_count = df['station_id'].nunique()
+    print(f"Calculating statistics for {station_count} unique stations...")
+
+    stats_df = df.groupby('station_id').agg(
+        avg_temperature=('temperature_c', 'mean'),
+        avg_humidity=('humidity_percent', 'mean'),
+        reading_count=('temperature_c', 'size')
+    ).reset_index()
+    stats_df['avg_temperature'] = stats_df['avg_temperature'].round(1)
+    stats_df['avg_humidity'] = stats_df['avg_humidity'].round(1)
+
+    print("\nStatistics calculated:")
+    print(f"Total readings analyzed: {len(df)}")
+    print(f"Stations with data: {station_count}")
+    print(f"Average readings per station: {len(df) / station_count:.1f}")
+
+    return stats_df
+
 
 
 # =============================================================================
@@ -234,7 +339,43 @@ def join_station_data(stations_df, readings_df):
     
     # TODO: Return the joined DataFrame
     
-    pass  # Remove this line when you implement the function
+    print("=" * 50)
+    print("JOINING STATION DATA")
+    print("=" * 50)
+
+    if stations_df is None or stations_df.empty:
+        print("ERROR: Stations DataFrame is empty or None")
+        return pd.DataFrame()
+
+    if readings_df is None or readings_df.empty:
+        print("ERROR: Readings DataFrame is empty or None")
+        return pd.DataFrame()
+
+    if 'station_id' not in stations_df.columns:
+        print("ERROR: 'station_id' column missing from stations data")
+        return pd.DataFrame()
+
+    if 'station_id' not in readings_df.columns:
+        print("ERROR: 'station_id' column missing from readings data")
+        return pd.DataFrame()
+
+    print(f"Stations table: {len(stations_df)} stations")
+    print(f"Readings table: {len(readings_df)} readings")
+
+    joined_df = pd.merge(
+        readings_df,
+        stations_df,
+        on='station_id',
+        how='left'
+    )
+
+    print(f"Joined table: {len(joined_df)} rows")
+    print(f"All readings preserved: {len(joined_df) == len(readings_df)}")
+
+    new_columns = [col for col in joined_df.columns if col not in readings_df.columns]
+    print(f"New columns added: {new_columns}")
+
+    return joined_df
 
 
 # =============================================================================

@@ -50,14 +50,22 @@ def load_spatial_data(file_path: Union[str, Path], **kwargs) -> gpd.GeoDataFrame
         >>> gdf = load_spatial_data('data/cities.geojson')
         >>> print(f"Loaded {len(gdf)} features")
     """
-    # TODO: Implement this function
-    # Hints:
-    # - Convert file_path to Path object
-    # - Check if file exists
-    # - Use gpd.read_file() to load data
-    # - Handle different file formats appropriately
-    # - Validate the loaded data is not empty
-    raise NotImplementedError("load_spatial_data not yet implemented")
+    
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    try:
+        gdf = gpd.read_file(file_path, **kwargs)
+    except Exception as e:
+        raise ValueError(f"Cannot read spatial data: {e}")
+
+    if gdf.empty:
+        raise ValueError("Spatial data is empty")
+
+    return gdf
+
 
 
 # Function 2: Explore Properties
@@ -89,13 +97,24 @@ def explore_properties(gdf: gpd.GeoDataFrame) -> Dict[str, Any]:
         >>> print(f"Bounds: {props['bounds']}")
         >>> print(f"Geometry types: {props['geometry_types']}")
     """
-    # TODO: Implement this function
-    # Hints:
-    # - Access gdf.crs for coordinate system
-    # - Use gdf.total_bounds for extent
-    # - Check gdf.geometry.geom_type for geometry types
-    # - Count features with len(gdf)
-    raise NotImplementedError("explore_properties not yet implemented")
+   
+    if gdf is None or gdf.empty:
+        return {
+            'crs': None,
+            'bounds': gdf.total_bounds.tolist(),
+            'geometry_types': [],
+            'feature_count': 0,
+            'columns': []
+        }
+
+    return {
+        'crs': gdf.crs,
+        'bounds': gdf.total_bounds.tolist(),
+        'geometry_types': gdf.geometry.geom_type.unique().tolist(),
+        'feature_count': len(gdf),
+        'columns': gdf.columns.tolist()
+    }
+
 
 
 # Function 3: Transform CRS
@@ -125,14 +144,16 @@ def transform_crs(
         >>> gdf_mercator = transform_crs(gdf, 'EPSG:3857')
         >>> print(f"New CRS: {gdf_mercator.crs}")
     """
-    # TODO: Implement this function
-    # Hints:
-    # - Check if gdf has a CRS defined (gdf.crs)
-    # - Use gdf.to_crs(target_crs) for transformation
-    # - Handle cases where CRS is None
-    # - Validate target_crs is valid
-    # - Return a copy, not modify original
-    raise NotImplementedError("transform_crs not yet implemented")
+    
+    if gdf.crs is None:
+        raise ValueError("Input GeoDataFrame has no CRS defined")
+
+    try:
+        result = gdf.to_crs(target_crs)
+    except Exception as e:
+        raise ValueError(f"Invalid target CRS: {e}")
+
+    return result
 
 
 # Function 4: Geometry Operations
@@ -177,16 +198,45 @@ def geometry_operations(
         >>> result = geometry_operations(gdf, 'centroid')
         >>> centroids = result['result']
     """
-    # TODO: Implement this function
-    # Hints:
-    # - Support multiple operations with if/elif statements
-    # - For buffer: use gdf.geometry.buffer(distance)
-    # - For centroid: use gdf.geometry.centroid
-    # - For area: use gdf.geometry.area
-    # - For length: use gdf.geometry.length
-    # - For simplify: use gdf.geometry.simplify(tolerance)
-    # - Return results in standardized dictionary format
-    raise NotImplementedError("geometry_operations not yet implemented")
+   
+    valid_operations = ['buffer', 'centroid', 'area', 'length', 'simplify']
+
+    if operation not in valid_operations:
+        raise ValueError(f"Invalid operation: {operation}")
+
+    result_gdf = gdf.copy()
+    statistics = {}
+
+    if operation == 'buffer':
+        if 'distance' not in kwargs:
+            raise ValueError("Buffer requires distance")
+        result_gdf['geometry'] = gdf.geometry.buffer(kwargs['distance'])
+        statistics['total_area'] = result_gdf.geometry.area.sum()
+
+    elif operation == 'centroid':
+        result_gdf['geometry'] = gdf.geometry.centroid
+
+    elif operation == 'area':
+        result_gdf['area'] = gdf.geometry.area
+        statistics['total_area'] = result_gdf['area'].sum()
+        statistics['mean_area'] = result_gdf['area'].mean()
+
+    elif operation == 'length':
+        result_gdf['length'] = gdf.geometry.length
+        statistics['total_length'] = result_gdf['length'].sum()
+        statistics['mean_length'] = result_gdf['length'].mean()
+
+    elif operation == 'simplify':
+        if 'tolerance' not in kwargs:
+            raise ValueError("Simplify requires tolerance")
+        result_gdf['geometry'] = gdf.geometry.simplify(kwargs['tolerance'])
+
+    return {
+        'result': result_gdf,
+        'statistics': statistics,
+        'operation': operation
+    }
+
 
 
 # Function 5: Spatial Relationships
@@ -230,16 +280,51 @@ def spatial_relationships(
         >>> result = spatial_relationships(points, lines, 'distance')
         >>> distances = result['results']
     """
-    # TODO: Implement this function
-    # Hints:
-    # - Validate both GeoDataFrames have CRS defined
-    # - Check if CRS match (transform if needed)
-    # - For intersects: use gdf1.geometry.intersects(gdf2.geometry)
-    # - For contains: use gdf1.geometry.contains(gdf2.geometry)
-    # - For within: use gdf1.geometry.within(gdf2.geometry)
-    # - For distance: use gdf1.geometry.distance(gdf2.geometry)
-    # - For nearest: use spatial indexing (.sindex)
-    raise NotImplementedError("spatial_relationships not yet implemented")
+   
+    valid_relationships = [
+        'intersects', 'contains', 'within', 'distance', 'nearest'
+    ]
+
+    if relationship not in valid_relationships:
+        raise ValueError(f"Invalid relationship: {relationship}")
+
+    if gdf1.crs != gdf2.crs:
+        raise ValueError("CRS mismatch between GeoDataFrames")
+
+    if gdf1.empty or gdf2.empty:
+        return {
+            'relationship': relationship,
+            'results': [],
+            'count': 0,
+            'indices': []
+        }
+
+    if relationship in ['intersects', 'contains', 'within']:
+        results = gdf1.geometry.apply(
+            lambda geom: getattr(geom, relationship)(gdf2.union_all())
+        )
+
+    elif relationship == 'distance':
+        results = gdf1.geometry.apply(
+            lambda geom: gdf2.distance(geom).min()
+        )
+
+    elif relationship == 'nearest':
+        results = gdf1.geometry.apply(
+            lambda geom: gdf2.distance(geom).idxmin()
+        )
+
+    if relationship in ['intersects', 'contains', 'within']:
+        indices = results[results].index.tolist()
+    else:
+        indices = results.index.tolist()
+
+    return {
+        'relationship': relationship,
+        'results': results,
+        'count': len(indices),
+        'indices': indices
+    }
 
 
 # Function 6: Spatial Joins
@@ -273,14 +358,44 @@ def spatial_joins(
         >>> result = spatial_joins(cities, countries, how='left', predicate='within')
         >>> print(f"Joined {len(result)} features")
     """
-    # TODO: Implement this function
-    # Hints:
-    # - Validate both inputs are GeoDataFrames
-    # - Check CRS compatibility
-    # - Use gpd.sjoin() for spatial join
-    # - Handle CRS mismatch by transforming
-    # - Validate result is not empty (for inner joins)
-    raise NotImplementedError("spatial_joins not yet implemented")
+    
+    # Validate input types
+    if not isinstance(left_gdf, gpd.GeoDataFrame):
+        raise ValueError("left_gdf must be a GeoDataFrame")
+
+    if not isinstance(right_gdf, gpd.GeoDataFrame):
+        raise ValueError("right_gdf must be a GeoDataFrame")
+
+    # Validate join type and spatial predicate
+    if how not in ['inner', 'left', 'right']:
+        raise ValueError(f"Invalid join type: {how}")
+
+    if predicate not in ['intersects', 'contains', 'within']:
+        raise ValueError(f"Invalid spatial predicate: {predicate}")
+
+    # Check coordinate reference systems
+    if left_gdf.crs is None or right_gdf.crs is None:
+        raise ValueError("Both GeoDataFrames must have a CRS")
+
+    
+    # Check CRS compatibility
+    if left_gdf.crs != right_gdf.crs:
+        raise ValueError("CRS mismatch between GeoDataFrames")
+
+
+    # Perform spatial join
+    result = gpd.sjoin(
+        left_gdf,
+        right_gdf,
+        how=how,
+        predicate=predicate
+    )
+
+    # Check for empty inner join
+    if how == 'inner' and result.empty:
+        raise ValueError("Spatial join returned no matching features")
+
+    return result
 
 
 # Function 7: Overlay and Visualize
@@ -328,15 +443,90 @@ def overlay_and_visualize(
         >>> result = overlay_and_visualize(cities, save_path='cities_map.png')
         >>> plt.show()
     """
-    # TODO: Implement this function
-    # Hints:
-    # - If gdf2 provided, perform overlay with gpd.overlay()
-    # - Create visualization with gdf.plot()
-    # - Add basemap with contextily if available
-    # - For interactive map, use gdf.explore()
-    # - Calculate statistics (feature counts, total area)
-    # - Save figure if save_path provided
-    raise NotImplementedError("overlay_and_visualize not yet implemented")
+   
+    import matplotlib.pyplot as plt
+
+    # Validate inputs
+    if not isinstance(gdf1, gpd.GeoDataFrame):
+        raise ValueError("gdf1 must be a GeoDataFrame")
+
+    if gdf2 is not None and not isinstance(gdf2, gpd.GeoDataFrame):
+        raise ValueError("gdf2 must be a GeoDataFrame")
+
+    valid_operations = [
+        'intersection', 'union',
+        'difference', 'symmetric_difference'
+    ]
+
+    if overlay_how not in valid_operations:
+        raise ValueError(f"Invalid overlay operation: {overlay_how}")
+
+    # Perform overlay if second dataset is provided
+    overlay_result = None
+
+    if gdf2 is not None:
+        if gdf1.crs != gdf2.crs:
+            raise ValueError("CRS mismatch between GeoDataFrames")
+
+        overlay_result = gpd.overlay(
+            gdf1,
+            gdf2,
+            how=overlay_how
+        )
+
+    # Create visualization
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    if not gdf1.empty:
+        gdf1.plot(ax=ax, color='lightblue', edgecolor='black',
+                  alpha=0.5)
+
+    if gdf2 is not None and not gdf2.empty:
+        gdf2.plot(ax=ax, color='lightgreen', edgecolor='black',
+                  alpha=0.5)
+
+    if overlay_result is not None and not overlay_result.empty:
+        overlay_result.plot(
+            ax=ax, color='red', edgecolor='black', alpha=0.7
+        )
+
+    ax.set_title(f"Spatial Overlay: {overlay_how}")
+    ax.set_xlabel("X Coordinate")
+    ax.set_ylabel("Y Coordinate")
+
+    # Calculate statistics
+    statistics = {
+        'gdf1_count': len(gdf1),
+        'gdf2_count': len(gdf2) if gdf2 is not None else 0,
+        'overlay_count': (
+            len(overlay_result)
+            if overlay_result is not None else 0
+        ),
+        'gdf1_area': float(gdf1.geometry.area.sum()),
+        'overlay_area': (
+            float(overlay_result.geometry.area.sum())
+            if overlay_result is not None else 0.0
+        )
+    }
+
+    # Save visualization if requested
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+
+   
+    result = {
+        'figure': fig,
+        'statistics': statistics
+    }
+
+    if gdf2 is not None:
+        result['overlay_result'] = overlay_result
+
+    return result
+
+
 
 
 # Helper Functions (provided for you)
